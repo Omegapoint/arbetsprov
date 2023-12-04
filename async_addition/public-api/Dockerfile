@@ -1,5 +1,9 @@
-FROM alpine:latest
+FROM python:3.8
 
-# TODO: Implement Public API
+WORKDIR /app
 
-ENTRYPOINT ["tail", "-f", "/dev/null"]
+COPY . /app
+
+RUN pip install -r requirements.txt
+
+CMD ["/usr/local/bin/python", "/app/api.py"]
