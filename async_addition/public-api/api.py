@@ -1,24 +1,35 @@
-from fastapi import FastAPI, HTTPException
 import httpx
-import uuid
 import uvicorn
 import threading
-from typing import Union
-from consumer import start_kafka_consumer, message_cache, thread_lock
+from consumer import start_kafka_consumer, message_cache, thread_lock, wait_for_result
+from components import *
+from typing import List, Optional
+from fastapi import FastAPI, HTTPException, Query
 
 
 app = FastAPI(title="Public API for Async Addition")
 
 
-# FastAPI endpoint to receive two numbers and forward them to the internal API
-@app.post("/add")
-async def add_numbers(numberOne: Union[int, float], numberTwo: Union[int, float]):
+# FastAPI endpoint to a calucation request with two numbers and forward them to the internal API. 
+# The add function returns the asyncId and optionally, the calculation result.
+@app.post("/add", response_model=CalculationResponse, response_model_exclude_none=True)
+async def add_numbers(calc_request: CalculationRequest, syncResult: Optional[bool] = Query(False)):
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.post("http://localhost:3000/add", json={"numberOne": numberOne, "numberTwo": numberTwo})
-            response.raise_for_status()
-            uuid = response.json()['asyncId']
-            return {"asyncId": uuid}
+            response = await client.post("http://localhost:3000/add", json=calc_request.dict())
+            async_id = response.json()['asyncId']
+
+            if syncResult:
+                # Starts looking for results in the message cache
+                result = await wait_for_result(async_id)
+
+                if result is not None:
+                    return CalculationResponse(asyncId=async_id, result=result)
+                else:
+                    raise HTTPException(
+                        status_code=408, detail="Result not available within timeout period")
+
+            return CalculationResponse(asyncId=async_id)
     except httpx.ConnectError:
         raise HTTPException(
             status_code=503, detail="Unable to connect to addition-service")
@@ -31,36 +42,21 @@ async def add_numbers(numberOne: Union[int, float], numberTwo: Union[int, float]
             status_code=500, detail="An unexpected error occurred")
 
 
-# Used to validate that the input string is an UUID
-def is_valid_uuid(uuid_to_test, version=4):
-    try:
-        uuid_obj = uuid.UUID(uuid_to_test, version=version)
-        return str(uuid_obj) == uuid_to_test
-    except ValueError:
-        return False
-
-# FastAPI endpoint to get the result using UUID
-
-
-@app.get("/result/{uuid}")
-async def get_result(uuid: str):
-    if not is_valid_uuid(uuid):
-        raise HTTPException(status_code=400, detail="Invalid UUID format")
-
+# FastAPI endpoint to get all calculation results from the internal Kafka topic.
+@app.get("/list-results", response_model=List[CombinedResponse])
+async def list_results():
     with thread_lock:
-        cached_result = message_cache.get(uuid)
-        if cached_result:
-            print("Found value stored in cache")
-            return {"result": cached_result}
-
-    raise HTTPException(status_code=404, detail="Result not found")
+        return [CombinedResponse(asyncId=async_id, **result.dict())
+                for async_id, result in message_cache.items()]
 
 
+# Starts the Kafka consumer in its own thread
 def run_kafka_consumer_thread():
     kafka_thread = threading.Thread(target=start_kafka_consumer)
     kafka_thread.start()
 
 
+# Starts everything up
 if __name__ == "__main__":
     run_kafka_consumer_thread()
     uvicorn.run(app, host="0.0.0.0", port=8443, log_level="debug")
