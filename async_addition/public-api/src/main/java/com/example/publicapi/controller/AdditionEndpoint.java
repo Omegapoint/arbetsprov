@@ -17,7 +17,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 @Log4j2
 @RestController
-@RequestMapping("/rest/math/")
+@RequestMapping()
 public class AdditionEndpoint {
 
     @Autowired
