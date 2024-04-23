@@ -1,5 +1,8 @@
-FROM alpine:latest
+FROM openjdk:17
 
-# TODO: Implement Public API
+WORKDIR /app
+EXPOSE 8443
+COPY build/libs/*.jar /app/app.jar
 
-ENTRYPOINT ["tail", "-f", "/dev/null"]
+ENTRYPOINT ["java","-jar","/app/app.jar"]
+
