@@ -12,6 +12,7 @@ Feel free to provide improvement suggestions for all the parts of this assignmen
 Some constraints to consider:
  - If you implement your solution using C#, please use .NET Core.
  - If you implement your solution using Java, please use Spring Boot.
+ - If you implement your solution using Python, please use Python Flask.
 
 When reviewing your submitted solution, we will consider security, technical correctness, code quality as well as performance/scalability.
 
